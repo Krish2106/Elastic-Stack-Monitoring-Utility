@@ -7,12 +7,12 @@ The Script can be deployed across the hosts running the ELK instances. (This ass
 Using Ansible this can be done as below
 
 \- hosts: all  
-   become: yes  
-   tasks:  
-    - name: Copy ELK monitoring python script  
-      copy: src=es_monitor.py dest=/usr/local/sbin/es_monitor.py owner=root group=root mode=755  
-    - name: Run Python monitoring script  
-      command: python /usr/local/sbin/es_monitor.py {{ elasticsearch restclient IP}}  
+   ` `become: yes  
+   ` `tasks:  
+      - name: Copy ELK monitoring python script  
+        ` `copy: src=es_monitor.py dest=/usr/local/sbin/es_monitor.py owner=root group=root mode=755  
+      - name: Run Python monitoring script  
+        ` `command: python /usr/local/sbin/es_monitor.py {{ elasticsearch restclient IP}}  
 
 
 The keys in dictionary  nodeService = {'master': 'elasticsearch', 'ingest': 'logstash', 'data': 'elasticsearch', 'kibana': 'kibana'} should be changed to match the component name representing the host 
