@@ -10,9 +10,11 @@ Using Ansible this can be done as below
   become: yes
   tasks:
     - name: Copy ELK monitoring python script
+    
       copy: src=es_monitor.py dest=/usr/local/sbin/es_monitor.py owner=root group=root mode=755
 
     - name: Run Python monitoring script
+    
       command: python /usr/local/sbin/es_monitor.py {{ elasticsearch restclient IP}}
 
 
