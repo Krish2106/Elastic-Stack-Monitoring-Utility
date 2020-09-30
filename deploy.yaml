@@ -1,0 +1,34 @@
+- hosts: all
+  become: yes
+  tasks:
+    - name: Install python-pip
+      shell: apt install python-pip -y
+
+    - name: Install python dependency
+      pip:
+        name:
+          - requests
+
+    - name: Copy opstack monitoring python script
+      copy: src=es_monitor.py dest=/usr/local/sbin/monitor.py owner=root group=root mode=755
+
+    - name: Create directory which holds last alerted timestamps file.
+      file:
+        path: /run/ops_monitor
+        state: directory
+        owner: root
+        group: root
+        mode: 0755
+
+    - name: Touch a file, using symbolic modes to set the permissions (equivalent to 0644)
+      file:
+        path: /run/ops_monitor/last_alert_times
+        state: touch
+        mode: u=rw,g=r,o=r
+
+    - name: Create the cronjob to run the monitoring python script
+      cron:
+        name: Run job every N minutes
+        minute: "*/2"
+        job: "/usr/bin/python /usr/local/sbin/monitor.py {{ Elastic_Rest_Client_VIP }}"
+        disabled: no

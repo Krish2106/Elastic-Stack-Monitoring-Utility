@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 
+fileName = '/run/ops_monitor/last_alert_times'
 
 class SystemdStatus(object):
     logger = logging.getLogger()
@@ -25,7 +26,7 @@ class SystemdStatus(object):
     def webex_alert(self):
         url = 'v1/webex/spark/endpoint'
         markdownMessage = '**%s - %s Down**' %(self.service, self.host)
-        body = {'roomId': 'roomID123', 'markdown': markdownMessage}
+        body = {'roomId': '<>', 'markdown': markdownMessage}
         headers = {'content-type': 'application/json', 'Authorization': 'Bearer <Token>'}
 
         try:
@@ -50,12 +51,12 @@ class SystemdStatus(object):
 
     def is_active(self):
 
-        # Optionally ElasticSearch Cluster health can be monitored using the rest client on its default port 9200 
-        # One of the ELK nodes can be chosen to perform the Health check, here the node hosting Kibana does the check
+        # The ES load balancer has a wide open access for port 9200, so any node can access this port
+        # As other ELK components atleast has two nodes, a failure on Cluster health will send duplicate alerts, hence Kibana Node is used
         if self.service == 'kibana':
             esURL = 'http://%s:9200/_cluster/health' % sys.argv[1]
             esResp = requests.get(esURL).json()
-            if esResp['status'] == 'red' or esResp['status'] == 'yellow':
+            if esResp['status'] == 'red':
                 return False
 
         # check status of systemd services
@@ -68,36 +69,48 @@ class SystemdStatus(object):
                     return True
         return False
 
-
-if __name__ == '__main__':
-
-    # define a map with node name(using service-component part as key) and the value as service running on it
+def node():
+    # define a map with node name(using only component part as key) and the value as service running on it
     nodeService = {'master': 'elasticsearch', 'ingest': 'logstash', 'data': 'elasticsearch', 'kibana': 'kibana'}
 
-    # realert interval in seconds 10 mins
-    realertTime = 600
-
-    # Monitoring utility sleep interval
-    sleepInterval = 60
-
-    # lastAlerted Time in seconds
-    lastAlertTime = int()
-
-    # capture host name using uname command
     osNode = os.uname()[1]
     for node in nodeService:
         if node in osNode:
-            monitor = SystemdStatus(nodeService[node], osNode, sys.argv[1])
-            while True:
-                currentTime = int(round(time.time()))
-                logging.debug("lastAlertTime is %s and currentTime is %s" %(lastAlertTime, currentTime))
-                if not monitor.is_active():
-                    logging.info('%s service is DOWN' % nodeService[node])
-                    if currentTime - lastAlertTime > realertTime:
-                        lastAlertTime = currentTime
-                        monitor.webex_alert()
-                        monitor.send_pd_alert()
-                    else:
-                        logging.info('%s service is Down - Post Alert Skipped' % nodeService[node])
-                logging.info('%s service is UP , sleeping for %s seconds' %(nodeService[node], sleepInterval))
-                time.sleep(sleepInterval)
+           return nodeService[node], osNode
+
+def file_write():
+    with open(fileName, 'a') as logfile:
+        logfile.write(str(int(round(time.time()))) + '\n')
+
+def main(args):
+    # realert interval in seconds - 15 mins
+    realertTime = 900
+
+    currentTime = int(round(time.time()))
+
+    service, hostname = node()
+    monitor = SystemdStatus(service, hostname, args)
+    if not monitor.is_active():
+        # read file to capture the last alerted timestamp
+        if os.stat(fileName).st_size != 0:
+            with open(fileName, 'rb') as f:
+                last_alert_time = int(f.readlines()[-1])
+        else:
+            last_alert_time = int()
+
+        if currentTime - last_alert_time > realertTime:
+            file_write()
+            # send alerts
+            monitor.webex_alert()
+            monitor.send_pd_alert()
+            logging.info('ops_monitor[%s]: INFO: %s service is Down - Post Alert sent' %(os.getpid(),service))
+        else:
+            logging.info('ops_monitor[%s]: INFO: %s service is Down - Post Alert Skipped' %(os.getpid(),service))
+    else:
+        logging.info('ops_monitor[%s]: INFO: %s service is UP' %(os.getpid(),service))
+
+
+if __name__ == '__main__':
+
+    # args - ElasticSearch Rest Client VIP
+    sys.exit(main(sys.argv[1]))
